@@ -2,8 +2,8 @@
 #include <Windows.h>
 
 const int MAX_ITERATIONS = 1000;
-const int WIDTH = 800;
-const int HEIGHT = 600;
+const int WIDTH = 1100;
+const int HEIGHT = 900;
 
 unsigned int pixels[WIDTH * HEIGHT];
 
@@ -64,6 +64,51 @@ void CalculateMandelbrotCPP(unsigned int* pixelArray, int width, int height) {
     }
 }
 
+extern "C" {
+    int IterateMandelbrot(float c_real, float c_imag);
+}
+
+// 2. The new rendering function
+void CalculateMandelbrotASM(unsigned int* pixelArray, int width, int height) {
+    // Note: We use 'float' (suffix 'f') instead of 'double' 
+    // because your Assembly code uses single-precision instructions (movss, mulss)
+    float min_real = -2.0f;
+    float max_real = 0.47f;
+    float min_imag = -1.12f;
+    float max_imag = 1.12f;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+
+            // Map the screen pixel to the complex plane
+            float c_real = min_real + (x / (float)width) * (max_real - min_real);
+            float c_imag = min_imag + (y / (float)height) * (max_imag - min_imag);
+
+            // Call your custom Assembly function!
+            int remaining_iters = IterateMandelbrot(c_real, c_imag);
+
+            int pixelIndex = (y * width) + x;
+
+            if (remaining_iters == 0) {
+                // The ASM loop counted all the way down to 0 without escaping.
+                // It is inside the Mandelbrot set.
+                pixelArray[pixelIndex] = 0x00000000; // Black
+            }
+            else {
+                // The ASM loop broke early. 
+                // Convert the countdown (80 down to 1) into an ascending count (0 to 79)
+                int iterations_taken = 80 - remaining_iters;
+
+                // Spread the 80 possible iteration values across your 1024-color palette.
+                // Multiplying by 12 scales it up so it utilizes the full gradient range.
+                int colorIndex = (iterations_taken * 12) & 1023;
+
+                pixelArray[pixelIndex] = palette[colorIndex];
+            }
+        }
+    }
+}
+
 BITMAPINFO bitmapInfo;
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -103,7 +148,8 @@ int main() {
     //    pixels[i] = 0x00000133;
     //}
 
-	CalculateMandelbrotCPP(pixels, WIDTH, HEIGHT);
+	//CalculateMandelbrotCPP(pixels, WIDTH, HEIGHT);
+    CalculateMandelbrotASM(pixels, WIDTH, HEIGHT);
 
 	const wchar_t CLASS_NAME[] = L"MandelbrotWindowClass";
 	WNDCLASS wc = {};
